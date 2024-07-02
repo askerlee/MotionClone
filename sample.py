@@ -49,15 +49,18 @@ def main(args):
         scheduler = DDIMScheduler(**OmegaConf.to_container(model_config.noise_scheduler_kwargs)),
     ).to(device)
 
+    motion_lora_path = "models/Motion_Module/v3_sd15_adapter.ckpt"
+
     pipeline = load_weights(
         pipeline,
         # motion module
         motion_module_path         = config.get("motion_module", ""),
+        adapter_lora_path          = motion_lora_path,
         dreambooth_model_path      = config.get("dreambooth_path", ""),
     ).to(device)
     
-    pipeline.scheduler.customized_step = customized_step.__get__(pipeline.scheduler)
-    pipeline.scheduler.added_set_timesteps = set_timesteps.__get__(pipeline.scheduler)
+    pipeline.scheduler.customized_step      = customized_step.__get__(pipeline.scheduler)
+    pipeline.scheduler.added_set_timesteps  = set_timesteps.__get__(pipeline.scheduler)
     
     seed = config.get("seed", args.default_seed)
     set_all_seed(seed)
@@ -103,7 +106,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--pretrained-model-path", type=str, default="/mnt/hwfile/mllm/lingpengyang/loaded_models/stable-diffusion-v1-5",)
+    parser.add_argument("--pretrained-model-path", type=str, default="models/StableDiffusion",)
     parser.add_argument("--model-config",      type=str, default="configs/model_config.yaml")    
     parser.add_argument("--config",            type=str, default="configs/example.yaml")
     parser.add_argument("--examples",          type=str, default=None)

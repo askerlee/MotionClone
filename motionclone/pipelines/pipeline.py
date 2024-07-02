@@ -24,7 +24,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 from diffusers.configuration_utils import FrozenDict
 from diffusers.models import AutoencoderKL
-from diffusers.pipeline_utils import DiffusionPipeline
+from diffusers import DiffusionPipeline
 from diffusers.schedulers import (
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -747,13 +747,18 @@ class MotionClonePipeline(DiffusionPipeline):
                 # for i in tqdm(range(num_inv_steps)): step_t = ddim_scheduler.timesteps[len(ddim_scheduler.timesteps) - i - 1] 反转时
                 global step_idx
                 step_idx = step_index
-                if step_index <self.input_config.guidance_step:
+                if step_index < self.input_config.guidance_step:
                     if step_t.item() not in all_latents.keys():
                         raise IndexError("The inference step does not match the inversion step")
                     example_latents = all_latents[step_t.item()].to(device=device, dtype=text_embeddings.dtype)
-                latents_group,latents_group_app = self.single_step_video(latents_group, latents_group_app, step_index, step_t, example_latents, text_embeddings, example_prompt_embeds,
-                                                cfg_scale, weight_each_motion, weight_each_app, global_app_guidance, token_index_example, token_index_app,extra_step_kwargs)                              
-                
+                #breakpoint()
+                # latents_group, latents_group_app: [2, 4, 16, 64, 64]
+                latents_group, latents_group_app_ = self.single_step_video(latents_group, latents_group_app, step_index, step_t, example_latents, text_embeddings, example_prompt_embeds,
+                                                cfg_scale, weight_each_motion, weight_each_app, global_app_guidance, token_index_example, token_index_app, extra_step_kwargs)                              
+                if latents_group_app_ is not None:
+                    latents_group_app = latents_group_app_
+
+                print(latents_group.abs().max())
                 progress_bar.update()
             
             control_latents = latents_group[[1]]
@@ -763,10 +768,9 @@ class MotionClonePipeline(DiffusionPipeline):
 
     def single_step_video(self, latents_group, latents_group_app, step_index, step_t, example_latents, text_embeddings, 
                             example_prompt_embeds, cfg_scale, weight_each_motion, weight_each_app, global_app_guidance, token_index_example, token_index_app, extra_step_kwargs):
-        
-        
+
         # Only require grad when need to compute the gradient for guidance
-        if step_index < self.input_config.guidance_step:
+        if step_index < self.input_config.guidance_step and step_index % 3 == 0:
             latent_model_input: torch.Tensor = torch.cat([latents_group[[0]], example_latents, latents_group[[1]],latents_group_app[[0]],latents_group_app[[1]]], dim=0)
             step_prompt_embeds = torch.cat([text_embeddings[[0]], example_prompt_embeds, text_embeddings[[1]], text_embeddings[[0]], text_embeddings[[1]]], dim=0)
             # [uncondition_latent, example_latent, control_latent, uncondition_app, condition_app]

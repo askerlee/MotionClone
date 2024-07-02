@@ -1,10 +1,5 @@
-
+**/__pycache__/
+**/*.pyc
 samples/
-
-models/
-
+/models/
 inversion/
-
-!motionclone/models/
-
-*.pyc

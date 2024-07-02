@@ -167,6 +167,24 @@ def load_weights(
             
         # 1. vae
         converted_vae_checkpoint = convert_ldm_vae_checkpoint(dreambooth_state_dict, animation_pipeline.vae.config)
+
+        '''
+        convert_vae_keys = list(converted_vae_checkpoint.keys())
+        for key in convert_vae_keys:
+            if "encoder.mid_block.attentions" in key or "decoder.mid_block.attentions" in  key:
+                new_key = None
+                if "key" in key:
+                    new_key = key.replace("key","to_k")
+                elif "query" in key:
+                    new_key = key.replace("query","to_q")
+                elif "value" in key:
+                    new_key = key.replace("value","to_v")
+                elif "proj_attn" in key:
+                    new_key = key.replace("proj_attn","to_out.0")
+                if new_key:
+                    converted_vae_checkpoint[new_key] = converted_vae_checkpoint.pop(key)
+        '''
+        
         animation_pipeline.vae.load_state_dict(converted_vae_checkpoint)
         # 2. unet
         converted_unet_checkpoint = convert_ldm_unet_checkpoint(dreambooth_state_dict, animation_pipeline.unet.config)
@@ -226,7 +244,8 @@ def video_preprocess(config,sample_start_idx=0,sample_frame_rate=None):
     video = rearrange(video, "f h w c -> f c h w")
     # import pdb; pdb.set_trace()
 
-    video = F.interpolate(video, size=(height, width), mode="bilinear", align_corners=True)
+    video = F.interpolate(video.float(), size=(height, width), mode="bilinear", align_corners=True)
+    video = video.to(torch.uint8)
 
     video_sample = rearrange(video, "(b f) c h w -> b f h w c", f=config.L)
 

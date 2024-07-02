@@ -1,7 +1,7 @@
 # motion module v3_sd15
 
   motion_module:    "models/Motion_Module/v3_sd15_mm.ckpt"
-  dreambooth_path: "models/DreamBooth_LoRA/realisticVisionV60B1_v51VAE.safetensors"
+  dreambooth_path: "models/DreamBooth_LoRA/realisticVisionV51_v51VAE_dste8.safetensors"
 
   model_config: "configs/model_config/model_config.yaml"
   cfg_scale: 7.5 # in default realistic classifer-free guidance

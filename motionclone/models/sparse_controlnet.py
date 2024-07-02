@@ -27,15 +27,12 @@ from diffusers.models.modeling_utils import ModelMixin
 
 
 from .unet_blocks import (
-    CrossAttnDownBlock3D,
-    DownBlock3D,
     UNetMidBlock3DCrossAttn,
     get_down_block,
 )
-from einops import repeat, rearrange
 from .resnet import InflatedConv3d
 
-from diffusers.models.unet_2d_condition import UNet2DConditionModel
+from diffusers.models import UNet2DConditionModel
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
