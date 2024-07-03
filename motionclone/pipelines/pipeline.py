@@ -183,6 +183,7 @@ class MotionClonePipeline(DiffusionPipeline):
         text_input_ids = text_inputs.input_ids
         untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
+        # untruncated_ids: [1, 28]. text_input_ids: [1, 77]。
         if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
             removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1])
             logger.warning(
@@ -190,6 +191,8 @@ class MotionClonePipeline(DiffusionPipeline):
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
 
+        # hasattr(use_attention_mask): False.
+        # attention_mask: None
         if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
             attention_mask = text_inputs.attention_mask.to(device)
         else:
@@ -199,10 +202,11 @@ class MotionClonePipeline(DiffusionPipeline):
             text_input_ids.to(device),
             attention_mask=attention_mask,
         )
+        # text_embeddings: [1, 77, 768]
         text_embeddings = text_embeddings[0]
-
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         bs_embed, seq_len, _ = text_embeddings.shape
+
         text_embeddings = text_embeddings.repeat(1, num_videos_per_prompt, 1)
         text_embeddings = text_embeddings.view(bs_embed * num_videos_per_prompt, seq_len, -1)
 
@@ -367,7 +371,7 @@ class MotionClonePipeline(DiffusionPipeline):
             pickle.dump(video_data, f)
                 
     
-    def single_step(self,latents, i, t,all_latents,text_embeddings,ref_prompt_embeds,latents_dtype,cond_control_ids,cond_example_ids,cond_appearance_ids,
+    def single_step(self, latents, i, t,all_latents,text_embeddings,ref_prompt_embeds,latents_dtype,cond_control_ids,cond_example_ids,cond_appearance_ids,
                     num_control_samples,do_classifier_free_guidance,keep_ids,guidance_scale,timesteps,num_warmup_steps,
                     progress_bar,callback,callback_steps,extra_step_kwargs):
         score = None
@@ -650,6 +654,7 @@ class MotionClonePipeline(DiffusionPipeline):
     def __call__(
         self,
         config: omegaconf.dictconfig = None,
+        id_text_embeddings: Optional[torch.FloatTensor] = None,
         num_videos_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -684,7 +689,9 @@ class MotionClonePipeline(DiffusionPipeline):
         new_prompt = config.new_prompt if isinstance(config.new_prompt, list) else [config.new_prompt] * batch_size
         negative_prompt = config.negative_prompt or ""
         negative_prompt = negative_prompt if isinstance(negative_prompt, list) else [negative_prompt] * batch_size 
-        text_embeddings = self._encode_prompt(new_prompt, device, num_videos_per_prompt, do_classifier_free_guidance, negative_prompt)
+        text_embeddings = self._encode_prompt(new_prompt, device, 
+                                              num_videos_per_prompt, do_classifier_free_guidance, 
+                                              negative_prompt)
         # [uncond_embeddings, text_embeddings] [2, 77, 768]
         
         if config.get('obj_pairs') is None or len(config.obj_pairs) == 0:
@@ -695,8 +702,7 @@ class MotionClonePipeline(DiffusionPipeline):
                 raise ValueError("only support single object in both original prompt and new prompt")
             global_app_guidance = False
             token_index_example = get_object_index(self.tokenizer,config.inversion_prompt, config.obj_pairs[0])
-            token_index_app = get_object_index(self.tokenizer,config.new_prompt, config.obj_pairs[1])
-            
+            token_index_app = get_object_index(self.tokenizer, config.new_prompt, config.obj_pairs[1])            
             print("token_index_example:", token_index_example, "token_index_app:", token_index_app)
             
         num_inference_step = config.num_inference_step or 300
@@ -705,6 +711,7 @@ class MotionClonePipeline(DiffusionPipeline):
         
         # 5. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
+        # control_latents: initial latents of the video frames.
         control_latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             num_channels_latents,
@@ -716,7 +723,7 @@ class MotionClonePipeline(DiffusionPipeline):
             generator,
             noisy_latents,
         )
-        latents_group = torch.cat([control_latents, control_latents],dim=0)
+        latents_group = torch.cat([control_latents, control_latents], dim=0)
         latents_group_app = latents_group
         
         with open(inversion_data_path, "rb") as f:
@@ -753,12 +760,14 @@ class MotionClonePipeline(DiffusionPipeline):
                     example_latents = all_latents[step_t.item()].to(device=device, dtype=text_embeddings.dtype)
                 #breakpoint()
                 # latents_group, latents_group_app: [2, 4, 16, 64, 64]
-                latents_group, latents_group_app_ = self.single_step_video(latents_group, latents_group_app, step_index, step_t, example_latents, text_embeddings, example_prompt_embeds,
-                                                cfg_scale, weight_each_motion, weight_each_app, global_app_guidance, token_index_example, token_index_app, extra_step_kwargs)                              
+                latents_group, latents_group_app_ = \
+                    self.single_step_video(latents_group, latents_group_app, step_index, step_t, example_latents, 
+                                           text_embeddings, id_text_embeddings, example_prompt_embeds,
+                                           cfg_scale, weight_each_motion, weight_each_app, global_app_guidance, 
+                                           token_index_example, token_index_app, extra_step_kwargs)                              
                 if latents_group_app_ is not None:
                     latents_group_app = latents_group_app_
 
-                print(latents_group.abs().max())
                 progress_bar.update()
             
             control_latents = latents_group[[1]]
@@ -766,14 +775,18 @@ class MotionClonePipeline(DiffusionPipeline):
             video = self.decode_latents(control_latents)
         return video
 
-    def single_step_video(self, latents_group, latents_group_app, step_index, step_t, example_latents, text_embeddings, 
-                            example_prompt_embeds, cfg_scale, weight_each_motion, weight_each_app, global_app_guidance, token_index_example, token_index_app, extra_step_kwargs):
+    def single_step_video(self, latents_group, latents_group_app, step_index, step_t, example_latents, 
+                          text_embeddings, id_text_embeddings, example_prompt_embeds, 
+                          cfg_scale, weight_each_motion, weight_each_app, global_app_guidance, 
+                          token_index_example, token_index_app, extra_step_kwargs):
 
         # Only require grad when need to compute the gradient for guidance
-        if step_index < self.input_config.guidance_step and step_index % 3 == 0:
-            latent_model_input: torch.Tensor = torch.cat([latents_group[[0]], example_latents, latents_group[[1]],latents_group_app[[0]],latents_group_app[[1]]], dim=0)
-            step_prompt_embeds = torch.cat([text_embeddings[[0]], example_prompt_embeds, text_embeddings[[1]], text_embeddings[[0]], text_embeddings[[1]]], dim=0)
+        if step_index < self.input_config.guidance_step and step_index % self.input_config.guidance_every_N_steps == 0:
             # [uncondition_latent, example_latent, control_latent, uncondition_app, condition_app]
+            latent_model_input: torch.Tensor = torch.cat([latents_group[[0]], example_latents, latents_group[[1]], 
+                                                          latents_group_app[[0]], latents_group_app[[1]]], dim=0)
+            # [uncondition_prompt, example_prompt, control_prompt, uncondition_app_prompt, condition_app_prompt]
+            step_prompt_embeds = torch.cat([text_embeddings[[0]], example_prompt_embeds, text_embeddings[[1]], text_embeddings[[0]], text_embeddings[[1]]], dim=0)
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, step_t).detach() # detach() aligns with freecontrol
         
             latent_model_input.requires_grad = True
@@ -790,6 +803,7 @@ class MotionClonePipeline(DiffusionPipeline):
                     attn_key_app = self.get_spatial_attn1_key(index_select=[0,0,0,1])
                     
                 cross_attn2_prob = self.get_cross_attn_prob(index_select=[0,1,0,1])
+                # global_app_guidance: False.
                 if not global_app_guidance:
                     mask_example_fore, mask_example_back, mask_app_fore, mask_app_back = compute_cross_attn_mask(self.input_config.app_guidance.cross_attn_blocks, cross_attn2_prob, 
                         token_index_example, token_index_app, self.input_config.app_guidance.cross_attn_mask_tr_example,self.input_config.app_guidance.cross_attn_mask_tr_app, step_index=None) 
@@ -811,27 +825,28 @@ class MotionClonePipeline(DiffusionPipeline):
             # # [frames*head, H*W, 77]
             loss_motion = compute_temp_loss(temp_attn_prob_example, temp_attn_prob_control, weight_each_motion.detach(),None)
             if global_app_guidance:
-                loss_appearance = compute_semantic_loss(attn_key_app,attn_key_control, weight_each_app.detach(),
-                                                            None, None, None,None,block_type=self.input_config.app_guidance.block_type)
+                loss_appearance = compute_semantic_loss(attn_key_app, attn_key_control, weight_each_app.detach(),
+                                                        None, None, None, None, block_type=self.input_config.app_guidance.block_type)
             else:      
-                loss_appearance = compute_semantic_loss(attn_key_app,attn_key_control, weight_each_app.detach(),
-                                                            mask_example_fore, mask_example_back, mask_app_fore,mask_app_back,block_type=self.input_config.app_guidance.block_type)
+                loss_appearance = compute_semantic_loss(attn_key_app, attn_key_control, weight_each_app.detach(),
+                                                        mask_example_fore, mask_example_back, mask_app_fore,mask_app_back,block_type=self.input_config.app_guidance.block_type)
             
 
             ####################################
-            if step_index > self.input_config.guidance_step- self.input_config.cool_up_step:
+            # cool_down_step: 0
+            if step_index > self.input_config.guidance_step - self.input_config.cool_down_step:
                 loss_motion = 0.0 * loss_motion
             ######################################
 
 
-            loss_total = 100.0*(loss_motion + loss_appearance) 
+            loss_total = 100.0 * (loss_motion + loss_appearance) 
             
             if step_index < self.input_config.warm_up_step:
                 scale = (step_index+1)/self.input_config.warm_up_step
-                loss_total = scale*loss_total
+                loss_total = scale * loss_total
                 # print(scale.item())
-            # if step_index > self.input_config.guidance_step- self.input_config.cool_up_step:
-            #     scale = (self.input_config.guidance_step-step_index)/self.input_config.cool_up_step
+            # if step_index > self.input_config.guidance_step- self.input_config.cool_down_step:
+            #     scale = (self.input_config.guidance_step-step_index)/self.input_config.cool_down_step
             #     loss_total = scale*loss_total
                 # print(scale.item())
             # loss_motion = loss_motion*self.input_config.temp_guidance.weight
@@ -861,19 +876,22 @@ class MotionClonePipeline(DiffusionPipeline):
                                             guidance_scale=self.input_config.grad_guidance_scale,
                                             indices=[0],
                                             **extra_step_kwargs, return_dict=False)[0].detach() # [1, 4, 64, 64]
-            return torch.cat([control_latents , control_latents],dim=0), torch.cat([app_latents , app_latents],dim=0)
+            return torch.cat([control_latents,  control_latents], dim=0), \
+                   torch.cat([app_latents,      app_latents], dim=0)
             
         else:
             with torch.no_grad():
                 latent_model_input = self.scheduler.scale_model_input(latents_group, step_t) # detach() aligns with freecontrol
+                id_text_embeddings_pair = torch.cat([text_embeddings[[0]], id_text_embeddings], dim=0)
                 noise_pred = self.unet(
                     latent_model_input, step_t, 
-                    encoder_hidden_states=text_embeddings,
+                    encoder_hidden_states=id_text_embeddings_pair,
                 ).sample.to(dtype=latents_group.dtype)
 
                 noise_pred = noise_pred[[1]] + cfg_scale * (noise_pred[[1]] - noise_pred[[0]])
-                control_latents = self.scheduler.customized_step(noise_pred, step_t, latents_group[[1]], score=None,
-                                                guidance_scale=self.input_config.grad_guidance_scale,
-                                                indices=[0],
-                                                **extra_step_kwargs, return_dict=False)[0] # [1, 4, 64, 64]
-                return torch.cat([control_latents , control_latents],dim=0), None
+                control_latents = \
+                    self.scheduler.customized_step(noise_pred, step_t, latents_group[[1]], score=None,
+                                                   guidance_scale=self.input_config.grad_guidance_scale,
+                                                   indices=[0],
+                                                   **extra_step_kwargs, return_dict=False)[0] # [1, 4, 64, 64]
+                return torch.cat([control_latents, control_latents],dim=0), None

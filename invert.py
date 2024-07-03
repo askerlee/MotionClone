@@ -4,15 +4,13 @@ import argparse
 from omegaconf import OmegaConf
 
 import torch
-import torchvision.transforms as transforms
-
 
 from diffusers import AutoencoderKL, DDIMScheduler
 from diffusers.utils.import_utils import is_xformers_available
 from transformers import CLIPTextModel, CLIPTokenizer
 from motionclone.models.unet import UNet3DConditionModel
 from motionclone.pipelines.pipeline import MotionClonePipeline
-from motionclone.pipelines.additional_components import customized_step, set_timesteps
+from motionclone.pipelines.additional_components import set_timesteps
 from motionclone.utils.util import load_weights
 from motionclone.utils.util import video_preprocess
 

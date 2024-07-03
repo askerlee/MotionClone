@@ -7,23 +7,23 @@
   cfg_scale: 7.5 # in default realistic classifer-free guidance
   negative_prompt: "ugly, deformed, noisy, blurry, distorted, out of focus, bad anatomy, extra limbs, poorly drawn face, poorly drawn hands, missing fingers"
 
-  num_inference_step: 200 # the denosing step for both inversion and inference
-  guidance_step: 120 # the step for guidance in inference
+  num_inference_step: 500 # the denosing step for both inversion and inference
+  guidance_step: 300 # the step for guidance in inference
   guidance_every_N_steps: 2 # the frequency of guidance in inference
   warm_up_step: 10 # the warm up step for guidance in inference
-  cool_down_step: 0 # the cool down step for guidance in inference
+  cool_down_step: 0 # the cool down step for guidance in inference. In cool down steps, loss_motion is set to 0.
   grad_guidance_scale: 1.0 # Gradient guidance scale, it will be multiplied with the weight in each type of guidance; 
-  grad_guidance_threshold: null # Gradient guidance threshold,number or null
+  grad_guidance_threshold: null #0.5 # Gradient guidance threshold,number or null
   
   temp_guidance:
     weight_each: [20000, 10000]  # [20000, 10000, 8000]
     blocks:
       [ 'up_blocks.1', 'up_blocks.2'] # the length of "blocks" must match the length of "weight_each"
   app_guidance:
-    weight_each: [500] # 400, 200
+    weight_each: [500, 0] # 400, 200
     block_type: "temp" # ["temp","spatial"] # determine the key in which block is used for appearance loss
     blocks:
-      [ 'up_blocks.1'] # the length of "blocks" must match the length of "weight_each"
+      [ 'up_blocks.1', 'up_blocks.2'] # the length of "blocks" must match the length of "weight_each"
 
     cross_attn_blocks:
       [ 'up_blocks.1','up_blocks.2'] # the mask is only extracted from the "up_blocks.1", which is interpolated for other blocks.
@@ -31,8 +31,10 @@
     cross_attn_mask_tr_app: 0.3  # threshold for mask extraction of appearance video
 # [ 'up_blocks.1', 'up_blocks.2', 'up_blocks.3']
 
-  video_path: 'resources/street.mp4'
-  inversion_prompt: "Busy urban street, many buildings on both sides, crossings" 
-  new_prompt : "Roman city-state, buildings on both sides, 8k, high detailed, best quality, film grain, Fujifilm XT3"
-  obj_pairs: ["street", "city-state"] # not required for global motion, such as camera motion
-
+  video_path: 'resources/dance.mp4'
+  inversion_prompt: "girl, dancing, in an open space" 
+  new_prompt : "woman, dancing, full body view"
+  obj_pairs: ["girl", "woman"] # not required for global motion, such as camera motion
+  subject_images: ["subjects-private/xiuchao/12.jpg", "subjects-private/xiuchao/2011.jpg", 
+                   "subjects-private/xiuchao/aug21-2019.jpg"]
+  

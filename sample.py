@@ -15,6 +15,7 @@ from motionclone.pipelines.pipeline import MotionClonePipeline
 from motionclone.pipelines.additional_components import customized_step, set_timesteps
 from motionclone.utils.util import load_weights
 from motionclone.utils.util import set_all_seed
+from adaface.adaface_wrapper import AdaFaceWrapper
 
 def main(args):
 
@@ -23,7 +24,7 @@ def main(args):
     
     config  = OmegaConf.load(args.config)
     adopted_dtype = torch.float16
-    device = "cuda"
+    device = "cuda" if args.gpu is None else f"cuda:{args.gpu}"
 
     # create validation pipeline
     tokenizer    = CLIPTokenizer.from_pretrained(args.pretrained_model_path, subfolder="tokenizer")
@@ -34,6 +35,8 @@ def main(args):
     config.width = config.get("W", args.W)
     config.height = config.get("H", args.H)
     config.video_length = config.get("L", args.L)
+    if args.guidance_every_N_steps != -1:
+        config.guidance_every_N_steps = args.guidance_every_N_steps
 
     model_config = OmegaConf.load(config.get("model_config", args.model_config))
     unet = UNet3DConditionModel.from_pretrained_2d(args.pretrained_model_path, subfolder="unet", unet_additional_kwargs=OmegaConf.to_container(model_config.unet_additional_kwargs)).to(device).to(dtype=adopted_dtype)
@@ -67,11 +70,34 @@ def main(args):
     generator = torch.Generator(device=pipeline.device)
     generator.manual_seed(seed)
     pipeline.scheduler.added_set_timesteps(config.num_inference_step, device=device)
+
+    adaface = AdaFaceWrapper(pipeline_name=None, base_model_path="models/StableDiffusion",
+                             adaface_ckpt_path="models/adaface/subjects-celebrity2024-05-16T17-22-46_zero3-ada-30000.pt", 
+                             use_ds_text_encoder=True, device=device)
+        
     if args.examples == None:
         video_name = config.video_path.split('/')[-1].split('.')[0]
         inversion_data_path =  os.path.join(args.inversion_save_dir, f"inverted_data_{video_name}.pkl")
+        if args.subject_images is not None:
+            subject_images = args.subject_images
+        else:
+            subject_images = config.get("subject_images", None)
+
+        if subject_images is not None:
+            with torch.no_grad():
+                adaface.generate_adaface_embeddings(image_folder=None, image_paths=subject_images,
+                                                    out_id_embs_scale=4, update_text_encoder=True)
+                # id_text_embeddings: [1, 77, 768]                
+                id_text_embeddings, _ = adaface.encode_prompt(config.new_prompt, verbose=True)
+                # Tokens 1:17 are the 16 id embeddings.
+                if args.id_emb_scale != 1:
+                    id_text_embeddings[:, 1:17] *= args.id_emb_scale
+        else:
+            id_text_embeddings = None
+                          
         videos = pipeline(
                         config = config,
+                        id_text_embeddings = id_text_embeddings,
                         generator = generator,
                         inversion_data_path = inversion_data_path
                     )
@@ -91,9 +117,28 @@ def main(args):
             config.video_path = example_infor["video_path"]
             config.inversion_prompt = example_infor["inversion_prompt"]
             config.new_prompt = example_infor["new_prompt"]
+
+            if args.subject_images is not None:
+                subject_images = args.subject_images
+            else:
+                subject_images = example_infor.get("subject_images", None)
+
+            if subject_images is not None:
+                with torch.no_grad():
+                    adaface.generate_adaface_embeddings(image_folder=None, image_paths=subject_images,
+                                        out_id_embs_scale=4, update_text_encoder=True)
+                    # id_text_embeddings: [1, 77, 768]
+                    id_text_embeddings, _ = adaface.encode_prompt(config.new_prompt, verbose=True)
+                    # Tokens 1:17 are the 16 id embeddings.
+                    if args.id_emb_scale != 1:                    
+                        id_text_embeddings[:, 1:17] *= args.id_emb_scale
+            else:
+                id_text_embeddings = None
+                            
             inversion_data_path =  os.path.join(args.inversion_save_dir, config.new_prompt.replace(' ', '_') + ".pkl")
             videos = pipeline(
                         config = config,
+                        id_text_embeddings = id_text_embeddings,
                         generator = generator,
                         inversion_data_path = inversion_data_path,
                     )
@@ -118,6 +163,10 @@ if __name__ == "__main__":
     parser.add_argument("--W", type=int, default=512)
     parser.add_argument("--H", type=int, default=512)
     parser.add_argument("--without-xformers", action="store_true")
+    parser.add_argument('--gpu', type=int, default=None)
+    parser.add_argument("--guidance_every_N_steps", type=int, default=-1)
+    parser.add_argument("--subject_images", type=str, nargs="+", default=None)
+    parser.add_argument("--id_emb_scale", type=float, default=1)
 
     args = parser.parse_args()
     main(args)

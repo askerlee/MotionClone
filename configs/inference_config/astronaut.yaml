@@ -1,7 +1,7 @@
 # motion module v3_sd15
 
   motion_module:    "models/Motion_Module/v3_sd15_mm.ckpt"
-  dreambooth_path: "models/DreamBooth_LoRA/realisticVisionV51_v51VAE.safetensors"
+  dreambooth_path: "models/DreamBooth_LoRA/realisticVisionV51_v51VAE_dste8.safetensors"
 
   model_config: "configs/model_config/model_config.yaml"
   cfg_scale: 7.5 # in default realistic classifer-free guidance
@@ -9,8 +9,9 @@
 
   num_inference_step: 500 # the denosing step for both inversion and inference
   guidance_step: 300 # the step for guidance in inference
+  guidance_every_N_steps: 2 # the frequency of guidance in inference
   warm_up_step: 10 # the warm up step for guidance in inference
-  cool_up_step: 0 # the cool up step for guidance in inference
+  cool_down_step: 0 # the cool down step for guidance in inference. In cool down steps, loss_motion is set to 0.
   grad_guidance_scale: 1.0 # Gradient guidance scale, it will be multiplied with the weight in each type of guidance; 
   grad_guidance_threshold: null #0.5 # Gradient guidance threshold,number or null
   
