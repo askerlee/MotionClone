@@ -206,8 +206,9 @@ def get_gaussian_blur(mask, sigma=5):
     
     return gauss.reshape(mask.shape[0],-1,1)
 
-def compute_cross_attn_mask(mask_blocks, cross_attn2_prob,token_index_example, token_index_app, mask_threshold_example=0.2,mask_threshold_app=0.3,step_index=None):
-    mask_example_foreground,mask_example_background,mask_app_foreground,mask_app_background  = {}, {}, {}, {}
+def compute_cross_attn_mask(mask_blocks, cross_attn2_prob, token_index_example, token_indices_app, 
+                            mask_threshold_example=0.2, mask_threshold_app=0.3, step_index=None):
+    mask_example_foreground, mask_example_background, mask_app_foreground, mask_app_background = {}, {}, {}, {}
     
     for block_name in mask_blocks:
         if block_name != "up_blocks.1":
@@ -267,12 +268,17 @@ def compute_cross_attn_mask(mask_blocks, cross_attn2_prob,token_index_example, t
             mask_example_foreground[block_name] = gaussian_blur* mask_no_blur
             mask_example_background[block_name] = (1-gaussian_blur)*(1-mask_no_blur) 
             
-            
-            mask_app = attn2_prob_app[:,:,[token_index_app]]
-            mask_app = (mask_app - mask_app.min(dim=1,keepdim=True)[0])/(mask_app.max(dim=1,keepdim=True)[0]-mask_app.min(dim=1,keepdim=True)[0]+1e-5)
+            if isinstance(token_indices_app, int):
+                mask_app = attn2_prob_app[:,:,[token_indices_app]]
+            elif isinstance(token_indices_app, torch.Tensor):
+                mask_app = attn2_prob_app[:, :, token_indices_app].mean(dim=2, keepdim=True) * np.sqrt(token_indices_app.numel())
 
-            mask_app_foreground[block_name] = (mask_app>mask_threshold_app).to(attn2_prob_app.dtype)
-            mask_app_background[block_name] = 1-mask_app_foreground[block_name]
+            # Normalize the mask
+            mask_app =   (mask_app - mask_app.min(dim=1, keepdim=True)[0]) \
+                       / (mask_app.max(dim=1, keepdim=True)[0] - mask_app.min(dim=1,keepdim=True)[0] + 1e-5)
+
+            mask_app_foreground[block_name] = (mask_app > mask_threshold_app).to(attn2_prob_app.dtype)
+            mask_app_background[block_name] = 1 - mask_app_foreground[block_name]
                 
         if step_index is not None and step_index % 30 ==0:
             for index in range(mask_example_foreground[block_name].shape[0]):

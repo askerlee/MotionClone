@@ -4,7 +4,8 @@
   dreambooth_path: "models/DreamBooth_LoRA/realisticVisionV51_v51VAE_dste8.safetensors"
 
   model_config: "configs/model_config/model_config.yaml"
-  cfg_scale: 7.5 # in default realistic classifer-free guidance
+  cfg_scale: 7.5  # in default realistic classifer-free guidance
+  id_cfg_scale: 4 # If too large, e.g. 7.5, then ghost artifacts may appear. 
   negative_prompt: "ugly, deformed, noisy, blurry, distorted, out of focus, bad anatomy, extra limbs, poorly drawn face, poorly drawn hands, missing fingers"
 
   num_inference_step: 500 # the denosing step for both inversion and inference
@@ -32,9 +33,9 @@
 # [ 'up_blocks.1', 'up_blocks.2', 'up_blocks.3']
 
   video_path: 'resources/dance.mp4'
-  inversion_prompt: "girl, dancing, in an open space" 
+  inversion_prompt: ", , , , , , , , , , , , , , , , girl, dancing, in an open space" 
   new_prompt : "woman, dancing, full body view"
-  obj_pairs: ["girl", "woman"] # not required for global motion, such as camera motion
+  obj_pairs: ["girl", "z"] # not required for global motion, such as camera motion
   subject_images: ["subjects-private/xiuchao/12.jpg", "subjects-private/xiuchao/2011.jpg", 
                    "subjects-private/xiuchao/aug21-2019.jpg"]
   
