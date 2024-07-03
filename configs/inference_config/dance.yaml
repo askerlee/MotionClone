@@ -35,6 +35,7 @@
   video_path: 'resources/dance.mp4'
   inversion_prompt: ", , , , , , , , , , , , , , , , girl, dancing, in an open space" 
   new_prompt : "woman, dancing, full body view"
+  #obj_pairs: ["girl", "woman"] # not required for global motion, such as camera motion
   obj_pairs: ["girl", "z"] # not required for global motion, such as camera motion
   subject_images: ["subjects-private/xiuchao/12.jpg", "subjects-private/xiuchao/2011.jpg", 
                    "subjects-private/xiuchao/aug21-2019.jpg"]

@@ -772,6 +772,7 @@ class MotionClonePipeline(DiffusionPipeline):
                 if latents_group_app_ is not None:
                     latents_group_app = latents_group_app_
 
+                #print(latents_group.abs().max())
                 progress_bar.update()
             
             control_latents = latents_group[[1]]
@@ -784,6 +785,14 @@ class MotionClonePipeline(DiffusionPipeline):
                           cfg_scale, id_cfg_scale, weight_each_motion, weight_each_app, global_app_guidance, 
                           token_index_example, token_indices_app, extra_step_kwargs):
 
+        if id_text_embeddings is None:
+            # Falls back to the ordinary text embeddings if id_text_embeddings is not provided
+            id_text_embeddings = text_embeddings[[1]]
+            id_cfg_scale = cfg_scale
+            w_motion = 1
+        else:
+            w_motion = 0.5
+
         # Only require grad when need to compute the gradient for guidance
         if step_index < self.input_config.guidance_step and step_index % self.input_config.guidance_every_N_steps == 0:
             # [uncondition_latent, example_latent, control_latent, uncondition_app, condition_app]
@@ -791,6 +800,7 @@ class MotionClonePipeline(DiffusionPipeline):
                                                           latents_group_app[[0]], latents_group_app[[1]]], dim=0)
             # [uncondition_prompt, example_prompt, control_prompt, uncondition_app_prompt, condition_app_prompt]
             uncond_emb = text_embeddings[[0]]
+
             step_prompt_embeds = torch.cat([uncond_emb, example_prompt_embeds, uncond_emb, id_text_embeddings], dim=0)
 
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, step_t).detach() # detach() aligns with freecontrol
@@ -857,8 +867,9 @@ class MotionClonePipeline(DiffusionPipeline):
                 loss_motion = 0.0 * loss_motion
             ######################################
 
-            loss_total = 100.0 * (loss_motion + loss_appearance) 
-            
+            loss_total = 100.0 * (loss_motion * w_motion + loss_appearance) 
+            print(f"Step {step_index}: loss_motion: {loss_motion.item()}, loss_appearance: {loss_appearance.item()}")
+
             if step_index < self.input_config.warm_up_step:
                 scale = (step_index+1) / self.input_config.warm_up_step
                 loss_total = scale * loss_total
